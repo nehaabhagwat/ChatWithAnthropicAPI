@@ -1,0 +1,256 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Anthropic API Chat</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, 'Open Sans', 'Helvetica Neue', sans-serif;
+            line-height: 1.6;
+            color: #333;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f9f9f9;
+        }
+        h1 {
+            color: #3a0ca3;
+            text-align: center;
+            margin-bottom: 30px;
+        }
+        .container {
+            background-color: #fff;
+            border-radius: 10px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            padding: 20px;
+        }
+        .api-key-section {
+            margin-bottom: 20px;
+            padding: 15px;
+            background-color: #f0f0f0;
+            border-radius: 5px;
+        }
+        .chat-container {
+            height: 400px;
+            overflow-y: auto;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            padding: 10px;
+            margin-bottom: 15px;
+            background-color: #f8f9fa;
+        }
+        .message {
+            padding: 10px;
+            margin-bottom: 10px;
+            border-radius: 5px;
+            max-width: 80%;
+            word-wrap: break-word;
+        }
+        .user-message {
+            background-color: #e9f5ff;
+            border-left: 4px solid #007bff;
+            margin-left: auto;
+        }
+        .claude-message {
+            background-color: #f0f4f8;
+            border-left: 4px solid #6c757d;
+        }
+        textarea {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            resize: vertical;
+            font-family: inherit;
+            margin-bottom: 10px;
+            box-sizing: border-box;
+        }
+        button {
+            background-color: #4c35ae;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: 600;
+            transition: background-color 0.3s;
+        }
+        button:hover {
+            background-color: #3a0ca3;
+        }
+        button:disabled {
+            background-color: #cccccc;
+            cursor: not-allowed;
+        }
+        .error {
+            color: #dc3545;
+            margin-top: 10px;
+            font-size: 14px;
+        }
+        .loading {
+            text-align: center;
+            color: #6c757d;
+            margin-top: 10px;
+            font-style: italic;
+        }
+        input[type="text"] {
+            width: 100%;
+            padding: 10px;
+            border: 1px solid #ddd;
+            border-radius: 5px;
+            font-family: inherit;
+            box-sizing: border-box;
+        }
+        .markdown {
+            white-space: pre-wrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Anthropic Claude API Chat</h1>
+        
+        <div class="api-key-section">
+            <label for="api-key">Anthropic API Key:</label>
+            <input type="text" id="api-key" placeholder="Enter your Anthropic API key here" />
+            <p style="font-size: 0.8em; color: #666;">Your API key is stored locally in your browser and is not sent anywhere except to Anthropic's API.</p>
+        </div>
+        
+        <div class="chat-container" id="chat-container">
+            <!-- Messages will appear here -->
+        </div>
+        
+        <div class="input-container">
+            <textarea id="user-input" rows="3" placeholder="Type your message here..."></textarea>
+            <button id="send-button">Send</button>
+            <div id="error-message" class="error"></div>
+            <div id="loading" class="loading" style="display: none;">Waiting for Claude's response...</div>
+        </div>
+    </div>
+
+    <script>
+        document.addEventListener('DOMContentLoaded', function() {
+            const apiKeyInput = document.getElementById('api-key');
+            const userInput = document.getElementById('user-input');
+            const sendButton = document.getElementById('send-button');
+            const chatContainer = document.getElementById('chat-container');
+            const errorMessage = document.getElementById('error-message');
+            const loadingIndicator = document.getElementById('loading');
+            
+            // Check for saved API key in localStorage
+            const savedApiKey = localStorage.getItem('anthropic_api_key');
+            if (savedApiKey) {
+                apiKeyInput.value = savedApiKey;
+            }
+            
+            // Save API key to localStorage when changed
+            apiKeyInput.addEventListener('change', function() {
+                localStorage.setItem('anthropic_api_key', apiKeyInput.value);
+            });
+            
+            // Handle send message button click
+            sendButton.addEventListener('click', sendMessage);
+            
+            // Also send on Enter key (but allow Shift+Enter for new lines)
+            userInput.addEventListener('keydown', function(event) {
+                if (event.key === 'Enter' && !event.shiftKey) {
+                    event.preventDefault();
+                    sendMessage();
+                }
+            });
+            
+            function sendMessage() {
+                const message = userInput.value.trim();
+                const apiKey = apiKeyInput.value.trim();
+                
+                // Clear any previous errors
+                errorMessage.textContent = '';
+                
+                // Validate inputs
+                if (!apiKey) {
+                    errorMessage.textContent = 'Please enter your Anthropic API key';
+                    return;
+                }
+                
+                if (!message) {
+                    errorMessage.textContent = 'Please enter a message';
+                    return;
+                }
+                
+                // Add user message to chat
+                addMessageToChat('user', message);
+                
+                // Clear input field
+                userInput.value = '';
+                
+                // Show loading indicator
+                loadingIndicator.style.display = 'block';
+                
+                // Disable send button while waiting
+                sendButton.disabled = true;
+                
+                // Send message to API
+                fetch('/api/chat', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        message: message,
+                        api_key: apiKey
+                    })
+                })
+                .then(response => response.json())
+                .then(data => {
+                    // Hide loading indicator
+                    loadingIndicator.style.display = 'none';
+                    
+                    // Enable send button
+                    sendButton.disabled = false;
+                    
+                    if (data.error) {
+                        errorMessage.textContent = `Error: ${data.error}`;
+                        return;
+                    }
+                    
+                    // Add Claude's response to chat
+                    const claudeResponse = data.content && data.content[0] && data.content[0].text 
+                        ? data.content[0].text 
+                        : 'Sorry, I couldn\'t process that response.';
+                    
+                    addMessageToChat('claude', claudeResponse);
+                })
+                .catch(error => {
+                    // Hide loading indicator
+                    loadingIndicator.style.display = 'none';
+                    
+                    // Enable send button
+                    sendButton.disabled = false;
+                    
+                    errorMessage.textContent = `Error: ${error.message}`;
+                });
+            }
+            
+            function addMessageToChat(role, content) {
+                const messageDiv = document.createElement('div');
+                messageDiv.className = `message ${role}-message`;
+                
+                // Simple markdown-like formatting
+                const formattedContent = content
+                    .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                    .replace(/\*(.*?)\*/g, '<em>$1</em>')
+                    .replace(/```([\s\S]*?)```/g, '<pre><code>$1</code></pre>')
+                    .replace(/`(.*?)`/g, '<code>$1</code>')
+                    .replace(/\n/g, '<br>');
+                
+                messageDiv.innerHTML = `<div class="markdown">${formattedContent}</div>`;
+                chatContainer.appendChild(messageDiv);
+                
+                // Scroll to the bottom
+                chatContainer.scrollTop = chatContainer.scrollHeight;
+            }
+        });
+    </script>
+</body>
+</html>
